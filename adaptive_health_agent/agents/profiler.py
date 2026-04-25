@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from graph.state import HealthAgentState
 from memory.episodic_memory import log_episode
-from memory.living_profile import update_current_state
+from memory.living_profile import update_current_state, add_pattern
 from utils.pattern_buffer import PatternBuffer
 
 load_dotenv()
@@ -36,6 +36,7 @@ THRESHOLDS = {
     "recovery_low": {"metric": "recovery_score", "direction": "absolute_below", "value": 30, "context_required": None},
     "temp_elevated": {"metric": "skin_temperature", "direction": "absolute_above_delta", "delta": 0.8, "context_required": None},
     "breathing_elevated": {"metric": "breathing_rate", "direction": "above", "percent": 25, "context_required": "sedentary"},
+    "sleep_efficiency_low": {"metric": "sleep_efficiency", "direction": "absolute_below", "value": 75, "context_required": None},
 }
 
 # Thresholds for LEARNING baselines (only flag extreme deviations >=40%)
@@ -47,6 +48,7 @@ LEARNING_THRESHOLDS = {
     "recovery_low": {"metric": "recovery_score", "direction": "absolute_below", "value": 25, "context_required": None},
     "temp_elevated": {"metric": "skin_temperature", "direction": "absolute_above", "value": 37.5, "context_required": None},
     "breathing_elevated": {"metric": "breathing_rate", "direction": "absolute_above", "value": 22, "context_required": "sedentary"},
+    "sleep_efficiency_low": {"metric": "sleep_efficiency", "direction": "absolute_below", "value": 65, "context_required": None},
 }
 
 
@@ -168,6 +170,7 @@ def profiler_node(state: HealthAgentState) -> dict:
         "recovery_low": (vitals.get("recovery_score"), baselines.get("typical_recovery_score")),
         "temp_elevated": (vitals.get("skin_temperature"), baselines.get("typical_skin_temp")),
         "breathing_elevated": (vitals.get("breathing_rate"), baselines.get("typical_breathing_rate")),
+        "sleep_efficiency_low": (sleep.get("sleep_efficiency"), baselines.get("typical_sleep_efficiency")),
     }
 
     # Check each metric for deviations
@@ -232,6 +235,8 @@ def profiler_node(state: HealthAgentState) -> dict:
         # Reset confirmed pattern counters after logging
         for metric in confirmed_patterns:
             _pattern_buffer.reset_confirmed(metric)
+            # Add to Living Profile's known patterns
+            add_pattern(user_id, f"Sustained {metric.replace('_', ' ')}")
 
     elif any_deviation:
         # Log single occurrence to ChromaDB
@@ -267,7 +272,7 @@ def profiler_node(state: HealthAgentState) -> dict:
         for k, v in trend_updates.items():
             profile["current_state"][k] = v
 
-    # Build deviation summary for Groq call
+    # Build deviation summary
     deviation_summary = []
     for metric_key, result in deviations.items():
         if result["deviated"]:
@@ -277,12 +282,74 @@ def profiler_node(state: HealthAgentState) -> dict:
                 f"deviation={result['deviation_percent']}%"
             )
 
-    # Groq LLM call for structured profiler summary
-    profiler_summary = _call_profiler_llm(packet, deviation_summary, baseline_status)
+    # Only call Profiler LLM when pattern confirmed (saves API calls / speed)
+    if pattern_confirmed and deviation_summary:
+        profiler_summary = _call_profiler_llm(packet, deviation_summary, baseline_status)
+    elif deviation_summary:
+        # Use lightweight fallback for single deviations (no LLM call)
+        significance = "elevated" if len(deviation_summary) < 3 else "critical"
+        profiler_summary = {
+            "anomalies": [d.split(":")[0] for d in deviation_summary],
+            "deviation_summary": "; ".join(deviation_summary),
+            "significance": significance,
+        }
+    else:
+        profiler_summary = None
 
     # Merge profiler LLM output into pattern_details if available
     if pattern_details and profiler_summary:
         pattern_details["profiler_assessment"] = profiler_summary
+
+    # Issue #5: Proactive questioning — when we detect deviations but user
+    # hasn't self-reported, and pattern isn't confirmed yet, ask a question
+    proactive_question = None
+    user_reported = packet.get("user_reported", {})
+    has_self_report = any(v is not None for v in user_reported.values()) if user_reported else False
+
+    if any_deviation and not pattern_confirmed and not has_self_report:
+        # Check which metrics are deviating to form a relevant question
+        deviated_metrics_list = [k for k, v in deviations.items() if v["deviated"]]
+        buffer_counts = _pattern_buffer.get_all_counts()
+        # Only ask if we're at 2 consecutive (approaching threshold of 3)
+        approaching_confirm = any(buffer_counts.get(m, 0) >= 2 for m in deviated_metrics_list)
+
+        if approaching_confirm:
+            if "stress_elevated" in deviated_metrics_list or "hrv_low" in deviated_metrics_list:
+                proactive_question = (
+                    "I've noticed your stress markers have been elevated for a couple of readings now. "
+                    "Has anything been going on at work or home that might be contributing?"
+                )
+            elif "sleep_efficiency_low" in deviated_metrics_list:
+                proactive_question = (
+                    "Your sleep quality has been below your usual baseline for a few nights. "
+                    "Have you changed anything in your evening routine, or are you feeling more restless?"
+                )
+            elif "hr_elevated" in deviated_metrics_list:
+                proactive_question = (
+                    "Your resting heart rate has been running higher than usual. "
+                    "Are you feeling okay? Any caffeine changes, illness, or unusual exertion?"
+                )
+            elif "recovery_low" in deviated_metrics_list:
+                proactive_question = (
+                    "Your recovery score has been lower than your baseline recently. "
+                    "Have you been getting enough rest, or has your workload increased?"
+                )
+            else:
+                proactive_question = (
+                    "I'm picking up some changes in your health metrics that are outside your usual range. "
+                    "How have you been feeling? Anything different going on?"
+                )
+
+    # If we have a proactive question but no pattern_details yet, create minimal details
+    if proactive_question and pattern_details is None:
+        pattern_details = {
+            "proactive_question": proactive_question,
+            "deviations": {k: v for k, v in deviations.items() if v["deviated"]},
+            "packet_timestamp": timestamp,
+            "user_id": user_id,
+        }
+    elif proactive_question and pattern_details:
+        pattern_details["proactive_question"] = proactive_question
 
     return {
         "deviation_detected": any_deviation,
@@ -383,7 +450,7 @@ def _call_profiler_llm(packet: dict, deviation_summary: list, baseline_status: s
 
     try:
         response = profiler_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

@@ -1,0 +1,20 @@
+# Generated data directories
+chroma_db/
+profiles/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+streamlit_env/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

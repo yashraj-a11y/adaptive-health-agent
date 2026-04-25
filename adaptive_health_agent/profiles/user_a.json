@@ -10,7 +10,12 @@
     "emergency_contact": {
       "name": "Partner",
       "contact": "555-0100"
-    }
+    },
+    "directness": 1,
+    "depth": 2,
+    "tone": 1,
+    "length": 5,
+    "framing": 2
   },
   "baselines": {
     "status": "ESTABLISHED",
@@ -26,16 +31,22 @@
     "typical_recovery_score": 70
   },
   "current_state": {
-    "sleep_trend_7d": "unknown",
-    "hrv_trend_7d": "unknown",
-    "stress_trend_7d": "unknown",
-    "recovery_trend_7d": "unknown",
+    "sleep_trend_7d": "declining",
+    "hrv_trend_7d": "declining",
+    "stress_trend_7d": "rising",
+    "recovery_trend_7d": "declining",
     "overall_trajectory": "unknown"
   },
-  "known_patterns": [],
+  "known_patterns": [
+    "Sustained sleep efficiency low",
+    "Sustained hrv low",
+    "Sustained breathing elevated",
+    "Sustained stress elevated",
+    "Sustained recovery low"
+  ],
   "communication_profile": {
     "style": "balanced",
-    "directness": 3,
+    "directness": 3.5,
     "depth": 3,
     "tone": 3,
     "length": 3,
@@ -44,7 +55,16 @@
     "best_engagement_times": [],
     "engagement_patterns": "unknown"
   },
-  "current_concerns": [],
-  "last_updated": "2026-04-25T16:39:54.104760",
+  "current_concerns": [
+    "Level 4: Metrics: sleep_efficiency_low (detected Apr 26 00:10)",
+    "Level 5: hrv_low (detected Apr 26 00:10)",
+    "Level 4: breathing_elevated (detected Apr 26 00:10)",
+    "Level 5: sleep_efficiency_low (detected Apr 26 00:10)",
+    "Level 5: hrv_low (detected Apr 26 00:35)",
+    "Level 4: breathing_elevated (detected Apr 26 00:35)",
+    "Level 5: hrv_low (detected Apr 26 00:38)",
+    "Level 4: breathing_elevated (detected Apr 26 00:38)"
+  ],
+  "last_updated": "2026-04-26T00:39:08.701115",
   "days_monitored": 20
 }

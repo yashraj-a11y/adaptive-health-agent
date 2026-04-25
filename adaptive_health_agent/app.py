@@ -1,571 +1,487 @@
 """
 Streamlit UI — Adaptive Personal Health Agent
-
-Single-page app with:
-  - Sidebar: User selection, scenario controls, onboarding
-  - Main area: Real-time telemetry display, agent messages, chat
-  - Metrics dashboard: Live vitals, trends, pattern history
+Cool blue theme, separate scrollable containers, natural adaptation.
 """
 
-import os
-import sys
-import json
-import time
+import os, sys, json, time
 import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import warnings
+warnings.filterwarnings("ignore", message=".*torchvision.*")
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from graph.graph import build_graph, build_user_message_graph
-from graph.state import HealthAgentState
 from knowledge_base.loader import load_knowledge_base
 from memory.living_profile import load_profile, save_profile, create_profile
-from memory.episodic_memory import get_recent, query_similar
-from memory.summarizer import generate_weekly_summary
 from telemetry.user_a_scenario import generate_packets as gen_user_a
 from telemetry.user_b_scenario import generate_packets as gen_user_b
 from agents.profiler import _pattern_buffer
 
+st.set_page_config(page_title="Health Advisor", page_icon="🫀", layout="wide")
 
-# ─────────────────────────────────────────────
-# Page Configuration
-# ─────────────────────────────────────────────
-st.set_page_config(
-    page_title="Adaptive Health Agent",
-    page_icon="🫀",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# ─────────────────────────────────────────────
-# Custom CSS
-# ─────────────────────────────────────────────
+# ═══ COOL BLUE THEME CSS ═══
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0e1117;
-    }
-    .metric-card {
-        background: linear-gradient(135deg, #1a1f2e 0%, #252b3b 100%);
-        border: 1px solid #2d3548;
-        border-radius: 12px;
-        padding: 16px;
-        margin: 4px 0;
-    }
-    .metric-value {
-        font-size: 28px;
-        font-weight: 700;
-        color: #e0e0e0;
-    }
-    .metric-label {
-        font-size: 13px;
-        color: #8892a4;
-        margin-bottom: 4px;
-    }
-    .metric-delta-up {
-        color: #ff6b6b;
-        font-size: 12px;
-    }
-    .metric-delta-down {
-        color: #51cf66;
-        font-size: 12px;
-    }
-    .metric-delta-stable {
-        color: #8892a4;
-        font-size: 12px;
-    }
-    .agent-message {
-        background: linear-gradient(135deg, #1e3a5f 0%, #1a2744 100%);
-        border-left: 4px solid #4dabf7;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 8px 0;
-    }
-    .agent-message-emergency {
-        background: linear-gradient(135deg, #5f1e1e 0%, #441a1a 100%);
-        border-left: 4px solid #ff6b6b;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 8px 0;
-    }
-    .user-message {
-        background: linear-gradient(135deg, #1e5f3a 0%, #1a4427 100%);
-        border-left: 4px solid #51cf66;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 8px 0;
-    }
-    .status-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    .severity-1 { background: #2d3548; color: #8892a4; }
-    .severity-2 { background: #1e3a5f; color: #4dabf7; }
-    .severity-3 { background: #5f4d1e; color: #ffd43b; }
-    .severity-4 { background: #5f3a1e; color: #ff922b; }
-    .severity-5 { background: #5f1e1e; color: #ff6b6b; }
-    .chat-container {
-        max-height: 400px;
-        overflow-y: auto;
-        padding: 8px;
-    }
-    div[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0e1117 0%, #151922 100%);
-    }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+.stApp {
+    background: linear-gradient(160deg, #0f172a 0%, #020617 50%, #0f172a 100%);
+    font-family: 'Inter', sans-serif;
+    color: #e2e8f0;
+}
+div[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0b1120 0%, #020617 100%);
+    border-right: 1px solid #1e293b;
+}
+
+/* Advisor message */
+.advisor-bubble {
+    background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 14px 14px 14px;
+    padding: 12px 16px; margin: 8px 0;
+    color: #f8fafc; font-size: 14px; line-height: 1.55;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.advisor-label {
+    font-size: 10px; font-weight: 600; color: #60a5fa;
+    margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+/* User message */
+.user-bubble {
+    background: linear-gradient(135deg, #0369a1 0%, #082f49 100%);
+    border-right: 3px solid #38bdf8;
+    border-radius: 14px 0 14px 14px;
+    padding: 12px 16px; margin: 8px 0 8px 50px;
+    color: #f8fafc; font-size: 14px; text-align: right;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+/* Emergency */
+.emergency-bubble {
+    background: linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%);
+    border-left: 3px solid #ef4444;
+    border-radius: 0 14px 14px 14px;
+    padding: 14px 16px; margin: 10px 0;
+    color: #fecaca; font-size: 14px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.emergency-bubble .advisor-label { color: #f87171; font-weight: 700; }
+/* Concern */
+.concern-bubble {
+    background: linear-gradient(135deg, #7c2d12 0%, #431407 100%);
+    border-left: 3px solid #f97316;
+    border-radius: 0 14px 14px 14px;
+    padding: 12px 16px; margin: 8px 0;
+    color: #fed7aa; font-size: 14px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.concern-bubble .advisor-label { color: #fb923c; }
+
+/* Vitals panel */
+.vital-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #334155;
+    border-radius: 10px; padding: 12px 8px; margin: 4px 0; text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.vital-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+.vital-value { font-size: 22px; font-weight: 700; color: #f8fafc; }
+.vital-unit { font-size: 10px; color: #94a3b8; }
+
+.section-hdr {
+    font-size: 10px; font-weight: 600; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 6px;
+    border-bottom: 1px solid #1e293b;
+    padding-bottom: 4px;
+}
+.summary-para { font-size: 12px; color: #cbd5e1; line-height: 1.5; margin: 4px 0; }
+.feed-line { font-size: 11px; color: #94a3b8; padding: 4px 0; border-bottom: 1px solid #1e293b; }
+
+/* Custom scrollbar for containers (WebKit) */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent; 
+}
+::-webkit-scrollbar-thumb {
+    background: #334155; 
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #475569; 
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# Session State Initialization
-# ─────────────────────────────────────────────
-def init_session_state():
-    """Initialize all session state variables."""
+# ═══ SESSION STATE ═══
+def init_state():
     defaults = {
-        "initialized": False,
-        "graph": None,
-        "msg_graph": None,
-        "packets": [],
-        "current_packet_idx": 0,
-        "is_streaming": False,
-        "messages": [],
-        "chat_history": [],
-        "current_profile": None,
-        "current_user_id": None,
-        "last_result": None,
-        "packet_history": [],
-        "deviation_count": 0,
-        "pattern_count": 0,
-        "messages_sent": 0,
+        "initialized": False, "graph": None, "msg_graph": None,
+        "packets": [], "current_packet_idx": 0, "auto_streaming": False,
+        "conversation": [],
+        "current_profile": None, "current_user_id": None,
+        "last_packet_data": None, "packet_history": [],
+        "deviation_count": 0, "pattern_count": 0, "messages_sent": 0,
+        "last_msg_idx": -10,
     }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+init_state()
 
 
-init_session_state()
-
-
-# ─────────────────────────────────────────────
-# Helper Functions
-# ─────────────────────────────────────────────
-
+# ═══ HELPERS ═══
 def initialize_system():
-    """Load KB and build graphs once."""
     if not st.session_state.initialized:
-        with st.spinner("Loading medical knowledge base..."):
+        with st.spinner("Loading knowledge base..."):
             load_knowledge_base()
         st.session_state.graph = build_graph()
         st.session_state.msg_graph = build_user_message_graph()
         st.session_state.initialized = True
 
-
-def load_or_create_profile(user_id: str, scenario: str) -> dict:
-    """Load existing profile or create a demo profile."""
+def load_or_create_profile(user_id, scenario):
     profile = load_profile(user_id)
     if profile is None:
         if scenario == "a":
-            user_data = {
-                "user_id": "user_a", "name": "Alex", "age": 32,
-                "known_conditions": [], "medications": [],
-                "goals": ["manage_stress"], "communication_style": "balanced",
-                "directness": 3, "depth": 3, "tone": 3, "length": 3, "framing": 3,
-                "alert_sensitivity": "normal",
-                "emergency_contact": {"name": "Partner", "contact": "555-0100"},
-                "best_engagement_times": [], "engagement_patterns": "unknown",
-            }
+            data = {"user_id": "user_a", "name": "Alex", "age": 32,
+                    "known_conditions": [], "medications": [],
+                    "goals": ["manage_stress"], "communication_style": "balanced",
+                    "directness": 3, "depth": 3, "tone": 3, "length": 3, "framing": 3,
+                    "alert_sensitivity": "normal",
+                    "emergency_contact": {"name": "Partner", "contact": "555-0100"},
+                    "best_engagement_times": [], "engagement_patterns": "unknown"}
         else:
-            user_data = {
-                "user_id": "user_b", "name": "Eleanor", "age": 72,
-                "known_conditions": ["hypertension", "type 2 diabetes"],
-                "medications": ["metformin", "lisinopril"],
-                "goals": ["monitor_condition"], "communication_style": "casual",
-                "directness": 4, "depth": 4, "tone": 5, "length": 4, "framing": 5,
-                "alert_sensitivity": "high",
-                "emergency_contact": {"name": "Michael", "contact": "555-0199"},
-                "best_engagement_times": [], "engagement_patterns": "unknown",
-            }
-        profile = create_profile(user_data)
+            data = {"user_id": "user_b", "name": "Eleanor", "age": 72,
+                    "known_conditions": ["hypertension", "type 2 diabetes"],
+                    "medications": ["metformin", "lisinopril"],
+                    "goals": ["monitor_condition"], "communication_style": "casual",
+                    "directness": 4, "depth": 4, "tone": 5, "length": 4, "framing": 5,
+                    "alert_sensitivity": "high",
+                    "emergency_contact": {"name": "Michael", "contact": "555-0199"},
+                    "best_engagement_times": [], "engagement_patterns": "unknown"}
+        profile = create_profile(data)
         profile["baselines"]["status"] = "ESTABLISHED"
-        profile["baselines"]["resting_hr"] = 68
-        profile["baselines"]["typical_hrv"] = 55
-        profile["baselines"]["typical_spo2"] = 98
-        profile["baselines"]["typical_skin_temp"] = 36.5
-        profile["baselines"]["typical_sleep_hours"] = 7.5
-        profile["baselines"]["typical_sleep_efficiency"] = 88
-        profile["baselines"]["typical_daily_steps"] = 5000
-        profile["baselines"]["typical_breathing_rate"] = 14
-        profile["baselines"]["typical_stress_score"] = 25
-        profile["baselines"]["typical_recovery_score"] = 70
+        profile["baselines"].update({
+            "resting_hr": 68, "typical_hrv": 55, "typical_spo2": 98,
+            "typical_skin_temp": 36.5, "typical_sleep_hours": 7.5,
+            "typical_sleep_efficiency": 88, "typical_daily_steps": 5000,
+            "typical_breathing_rate": 14, "typical_stress_score": 25,
+            "typical_recovery_score": 70,
+        })
         profile["days_monitored"] = 20
-        save_profile(user_data["user_id"], profile)
-
+        save_profile(data["user_id"], profile)
     return profile
 
-
-def process_packet(packet: dict) -> dict:
-    """Process a single telemetry packet through the graph."""
+def process_packet(packet):
     profile = st.session_state.current_profile
     state = {
-        "living_profile": profile,
-        "current_packet": packet,
-        "deviation_detected": False,
-        "pattern_confirmed": False,
-        "pattern_details": None,
-        "severity_level": None,
-        "analyst_output": None,
-        "proceed_to_communicate": False,
-        "final_message": None,
-        "notify_family": False,
-        "user_message": None,
-        "agent_response": None,
+        "living_profile": profile, "current_packet": packet,
+        "deviation_detected": False, "pattern_confirmed": False,
+        "pattern_details": None, "severity_level": None,
+        "analyst_output": None, "proceed_to_communicate": False,
+        "final_message": None, "notify_family": False,
+        "user_message": None, "agent_response": None,
     }
-
     try:
         result = st.session_state.graph.invoke(state)
-    except Exception as e:
-        st.error(f"Graph error: {e}")
+    except Exception:
         result = state
 
-    # Update counters
     if result.get("deviation_detected"):
         st.session_state.deviation_count += 1
     if result.get("pattern_confirmed"):
         st.session_state.pattern_count += 1
+    st.session_state.last_packet_data = packet
+
     if result.get("final_message"):
-        st.session_state.messages_sent += 1
-        st.session_state.messages.append({
-            "type": "agent",
-            "severity": result.get("severity_level", 1),
-            "message": result["final_message"],
-            "timestamp": packet.get("timestamp", ""),
-            "notify_family": result.get("notify_family", False),
-        })
-
-    # Reload profile after graph updates
+        # Cooldown: don't send messages too frequently
+        idx = st.session_state.current_packet_idx
+        if idx - st.session_state.last_msg_idx >= 3:
+            st.session_state.messages_sent += 1
+            st.session_state.last_msg_idx = idx
+            severity = result.get("severity_level", 1)
+            btype = "emergency" if severity >= 5 else "concern" if severity >= 3 else "advisor"
+            st.session_state.conversation.append({
+                "role": "advisor", "type": btype,
+                "content": result["final_message"], "severity": severity,
+                "timestamp": packet.get("timestamp", ""),
+                "notify_family": result.get("notify_family", False),
+            })
     st.session_state.current_profile = load_profile(st.session_state.current_user_id) or profile
-
     return result
 
-
-def send_chat_message(message: str):
-    """Send a user chat message through the communicator."""
+def send_chat(message):
     profile = st.session_state.current_profile
+
+    # LangGraph and memory take care of the adaptation.
+    # No artificial prepending of recent context needed.
     state = {
         "living_profile": profile,
-        "current_packet": {
-            "user_id": st.session_state.current_user_id,
-            "timestamp": datetime.now().isoformat(),
-        },
-        "deviation_detected": False,
-        "pattern_confirmed": False,
-        "pattern_details": None,
-        "severity_level": None,
-        "analyst_output": None,
-        "proceed_to_communicate": False,
-        "final_message": None,
-        "notify_family": False,
+        "current_packet": {"user_id": st.session_state.current_user_id,
+                           "timestamp": datetime.now().isoformat()},
+        "deviation_detected": False, "pattern_confirmed": False,
+        "pattern_details": None, "severity_level": None,
+        "analyst_output": None, "proceed_to_communicate": False,
+        "final_message": None, "notify_family": False,
         "user_message": message,
         "agent_response": None,
     }
-
     try:
         result = st.session_state.msg_graph.invoke(state)
-        response = result.get("agent_response", "I couldn't process that. Please try again.")
+        response = result.get("agent_response") or "I couldn't process that right now."
     except Exception as e:
-        response = f"Error: {e}"
+        response = f"Sorry, trouble right now: {str(e)[:80]}"
 
-    st.session_state.chat_history.append({"role": "user", "content": message})
-    st.session_state.chat_history.append({"role": "agent", "content": response})
+    st.session_state.conversation.append({"role": "user", "content": message})
+    st.session_state.conversation.append({"role": "advisor", "type": "advisor", "content": response})
+
+    # The magic of adapting happens here:
+    try:
+        from agents.communicator import apply_communication_feedback
+        uid = st.session_state.current_user_id
+        ml = message.lower().strip()
+        if len(ml.split()) <= 3 and ml in ("ok","okay","sure","fine","k","thanks","got it"):
+            apply_communication_feedback(uid, "dismissive")
+        if any(kw in ml for kw in ("number","data","metric","stat","bpm","hrv")):
+            apply_communication_feedback(uid, "engages_data")
+    except Exception:
+        pass
 
 
-# ─────────────────────────────────────────────
-# Sidebar
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════
+# LEFT SIDEBAR
+# ═══════════════════════════════════════
 with st.sidebar:
     st.markdown("## 🫀 Health Agent")
     st.markdown("---")
 
-    # Scenario selection
-    scenario = st.radio(
-        "Select Scenario",
-        options=["a", "b"],
-        format_func=lambda x: "User A — Stress Arc (50 packets)" if x == "a"
-                              else "User B — Emergency Arc (18 packets)",
-        index=0,
-        key="scenario_select",
-    )
+    scenario = st.radio("Scenario", ["a", "b"],
+        format_func=lambda x: "👤 Alex (32) — Stress" if x == "a" else "👵 Eleanor (72) — Emergency",
+        key="scenario_select")
 
-    # Initialize button
-    if st.button("🔄 Initialize / Reset", use_container_width=True, key="init_btn"):
-        # Reset state
+    if st.button("🔄 Initialize / Reset", use_container_width=True):
         st.session_state.current_packet_idx = 0
-        st.session_state.is_streaming = False
-        st.session_state.messages = []
-        st.session_state.chat_history = []
-        st.session_state.last_result = None
+        st.session_state.auto_streaming = False
+        st.session_state.conversation = []
+        st.session_state.last_packet_data = None
         st.session_state.packet_history = []
         st.session_state.deviation_count = 0
         st.session_state.pattern_count = 0
         st.session_state.messages_sent = 0
-
-        # Reset pattern buffer
-        for metric in _pattern_buffer._counters:
-            _pattern_buffer.reset(metric)
-
+        st.session_state.last_msg_idx = -10
+        for m in _pattern_buffer._counters:
+            _pattern_buffer.reset(m)
         initialize_system()
-
-        user_id = f"user_{scenario}"
-        st.session_state.current_user_id = user_id
-        st.session_state.current_profile = load_or_create_profile(user_id, scenario)
-
-        if scenario == "a":
-            st.session_state.packets = gen_user_a()
-        else:
-            st.session_state.packets = gen_user_b()
-
-        st.success(f"Initialized with {len(st.session_state.packets)} packets")
-
-    st.markdown("---")
-
-    # Streaming controls
-    st.markdown("### ▶️ Telemetry Controls")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("▶ Next", use_container_width=True, key="next_btn"):
-            if st.session_state.packets and st.session_state.current_packet_idx < len(st.session_state.packets):
-                packet = st.session_state.packets[st.session_state.current_packet_idx]
-                result = process_packet(packet)
-                st.session_state.last_result = result
-                st.session_state.packet_history.append(packet)
-                st.session_state.current_packet_idx += 1
-
-    with col2:
-        total = len(st.session_state.packets) if st.session_state.packets else 0
-        current = st.session_state.current_packet_idx
-        st.markdown(f"**{current}/{total}**")
-
-    # Stream all button
-    if st.button("⏩ Stream All", use_container_width=True, key="stream_all_btn"):
-        if st.session_state.packets:
-            progress = st.progress(0)
-            total = len(st.session_state.packets)
-            start = st.session_state.current_packet_idx
-
-            for i in range(start, total):
-                packet = st.session_state.packets[i]
-                result = process_packet(packet)
-                st.session_state.last_result = result
-                st.session_state.packet_history.append(packet)
-                st.session_state.current_packet_idx = i + 1
-                progress.progress((i + 1 - start) / (total - start) if total > start else 1.0)
-
-            progress.empty()
-            st.success(f"Processed {total - start} packets")
-
-    st.markdown("---")
-
-    # Profile info
-    if st.session_state.current_profile:
-        profile = st.session_state.current_profile
-        identity = profile.get("identity", {})
-        st.markdown("### 👤 User Profile")
-        st.markdown(f"**Name:** {identity.get('name', 'N/A')}")
-        st.markdown(f"**Age:** {identity.get('age', 'N/A')}")
-        conditions = identity.get("known_conditions", [])
-        st.markdown(f"**Conditions:** {', '.join(conditions) if conditions else 'None'}")
-        st.markdown(f"**Baseline:** {profile.get('baselines', {}).get('status', 'N/A')}")
-        st.markdown(f"**Days Monitored:** {profile.get('days_monitored', 0)}")
-
-    st.markdown("---")
-
-    # Stats
-    st.markdown("### 📊 Session Stats")
-    st.markdown(f"⚡ Deviations: **{st.session_state.deviation_count}**")
-    st.markdown(f"🔴 Patterns: **{st.session_state.pattern_count}**")
-    st.markdown(f"📨 Messages: **{st.session_state.messages_sent}**")
-
-
-# ─────────────────────────────────────────────
-# Main Content Area
-# ─────────────────────────────────────────────
-st.markdown("# 🫀 Adaptive Personal Health Agent")
-
-if not st.session_state.current_profile:
-    st.info("👈 Select a scenario and click **Initialize / Reset** in the sidebar to begin.")
-    st.stop()
-
-# ─── Top Row: Live Vitals ───
-st.markdown("## 📡 Live Telemetry")
-
-if st.session_state.packet_history:
-    latest = st.session_state.packet_history[-1]
-    vitals = latest.get("vitals", {})
-    movement = latest.get("movement", {})
-    sleep = latest.get("sleep_last_night", {})
-    context = latest.get("context", {})
-    baselines = st.session_state.current_profile.get("baselines", {})
-
-    # Vitals row
-    cols = st.columns(8)
-    metrics = [
-        ("❤️ HR", vitals.get("heart_rate"), "bpm", baselines.get("resting_hr")),
-        ("💓 HRV", vitals.get("hrv"), "ms", baselines.get("typical_hrv")),
-        ("🩸 SpO2", vitals.get("spo2"), "%", baselines.get("typical_spo2")),
-        ("🌡️ Temp", vitals.get("skin_temperature"), "°C", baselines.get("typical_skin_temp")),
-        ("🫁 Breath", vitals.get("breathing_rate"), "/min", baselines.get("typical_breathing_rate")),
-        ("😰 Stress", vitals.get("stress_score"), "", baselines.get("typical_stress_score")),
-        ("💪 Recovery", vitals.get("recovery_score"), "", baselines.get("typical_recovery_score")),
-        ("⚡ EDA", vitals.get("eda_stress_indicator"), "", None),
-    ]
-
-    for col, (label, value, unit, baseline) in zip(cols, metrics):
-        with col:
-            delta = None
-            delta_color = "off"
-            if baseline and value and isinstance(value, (int, float)) and isinstance(baseline, (int, float)):
-                diff = round(value - baseline, 1)
-                if diff != 0:
-                    delta = f"{diff:+} {unit}"
-                    # For HR, stress: increase is bad. For HRV, recovery: decrease is bad
-                    if label in ("❤️ HR", "😰 Stress", "🫁 Breath", "🌡️ Temp"):
-                        delta_color = "inverse"
-                    else:
-                        delta_color = "normal"
-
-            display_value = f"{value} {unit}" if isinstance(value, (int, float)) else str(value)
-            st.metric(label=label, value=display_value, delta=delta, delta_color=delta_color)
-
-    # Context row
-    st.markdown(f"**Timestamp:** {latest.get('timestamp', 'N/A')} | "
-                f"**Activity:** {movement.get('activity_state', 'N/A')} | "
-                f"**Location:** {context.get('location_zone', 'N/A')} | "
-                f"**Steps:** {movement.get('steps_today', 0)} | "
-                f"**Sleep:** {sleep.get('total_hours', 'N/A')}hrs "
-                f"({sleep.get('sleep_efficiency', 'N/A')}% efficiency)")
-else:
-    st.markdown("*No telemetry data yet. Click ▶ Next or ⏩ Stream All to begin.*")
-
-st.markdown("---")
-
-# ─── Two Column Layout: Messages + Chat ───
-msg_col, chat_col = st.columns([3, 2])
-
-with msg_col:
-    st.markdown("## 🤖 Agent Messages")
-
-    if st.session_state.messages:
-        for msg in reversed(st.session_state.messages[-10:]):
-            severity = msg.get("severity", 1)
-            css_class = "agent-message-emergency" if severity >= 4 else "agent-message"
-            severity_badge = f'<span class="status-badge severity-{severity}">Level {severity}</span>'
-
-            st.markdown(
-                f'<div class="{css_class}">'
-                f'{severity_badge} &nbsp; <small>{msg["timestamp"]}</small>'
-                f'<p>{msg["message"]}</p>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            if msg.get("notify_family"):
-                st.error("🚨 EMERGENCY: Family notification triggered!")
-    else:
-        st.markdown("*No agent messages yet. Process telemetry packets to see insights.*")
-
-with chat_col:
-    st.markdown("## 💬 Chat")
-
-    # Display chat history
-    chat_container = st.container()
-    with chat_container:
-        for entry in st.session_state.chat_history[-10:]:
-            if entry["role"] == "user":
-                st.markdown(
-                    f'<div class="user-message">🧑 {entry["content"]}</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<div class="agent-message">🤖 {entry["content"]}</div>',
-                    unsafe_allow_html=True,
-                )
-
-    # Chat input
-    user_input = st.text_input("Ask about your health data...", key="chat_input",
-                                placeholder="e.g., How has my sleep been?")
-    if st.button("Send", key="send_chat_btn") and user_input:
-        send_chat_message(user_input)
+        uid = f"user_{scenario}"
+        st.session_state.current_user_id = uid
+        st.session_state.current_profile = load_or_create_profile(uid, scenario)
+        st.session_state.packets = gen_user_a() if scenario == "a" else gen_user_b()
+        name = st.session_state.current_profile.get("identity", {}).get("name", "User")
+        st.session_state.conversation.append({
+            "role": "advisor", "type": "advisor",
+            "content": f"Hi {name}! 👋 I'm your personal health advisor. I'll be monitoring your vitals and speaking up if anything looks unusual. Feel free to ask me anything about your health.",
+        })
         st.rerun()
 
-st.markdown("---")
-
-# ─── Bottom: Trends & History ───
-st.markdown("## 📈 Trends & Pattern History")
-
-if st.session_state.packet_history and len(st.session_state.packet_history) > 1:
-    trend_col1, trend_col2 = st.columns(2)
-
-    with trend_col1:
-        # HR trend chart
-        hr_data = [p["vitals"]["heart_rate"] for p in st.session_state.packet_history]
-        stress_data = [p["vitals"]["stress_score"] for p in st.session_state.packet_history]
-        st.markdown("### Heart Rate & Stress")
-        chart_data = {"Heart Rate": hr_data, "Stress Score": stress_data}
-        st.line_chart(chart_data)
-
-    with trend_col2:
-        # HRV and recovery trend
-        hrv_data = [p["vitals"]["hrv"] for p in st.session_state.packet_history]
-        recovery_data = [p["vitals"]["recovery_score"] for p in st.session_state.packet_history]
-        st.markdown("### HRV & Recovery")
-        chart_data2 = {"HRV": hrv_data, "Recovery": recovery_data}
-        st.line_chart(chart_data2)
-
-    # Current state summary
     if st.session_state.current_profile:
-        current_state = st.session_state.current_profile.get("current_state", {})
-        concerns = st.session_state.current_profile.get("current_concerns", [])
-        patterns = st.session_state.current_profile.get("known_patterns", [])
+        st.markdown("---")
+        total = len(st.session_state.packets) if st.session_state.packets else 0
+        current = st.session_state.current_packet_idx
+        remaining = total - current
 
-        state_col1, state_col2, state_col3 = st.columns(3)
-        with state_col1:
-            st.markdown("### Current State")
-            for key, value in current_state.items():
-                icon = "🔴" if value in ("declining", "rising") else "🟢" if value == "stable" else "⚪"
-                st.markdown(f"{icon} **{key.replace('_', ' ').title()}:** {value}")
+        st.markdown(f"**📡 {current}/{total}** packets")
 
-        with state_col2:
-            st.markdown("### Active Concerns")
-            if concerns:
-                for c in concerns:
-                    st.markdown(f"⚠️ {c}")
+        if remaining > 0:
+            c1, c2 = st.columns(2)
+            with c1:
+                if not st.session_state.auto_streaming:
+                    if st.button("▶ Start", use_container_width=True, key="start_stream"):
+                        st.session_state.auto_streaming = True
+                        st.rerun()
+                else:
+                    if st.button("⏸ Stop", use_container_width=True, key="stop_stream"):
+                        st.session_state.auto_streaming = False
+                        st.rerun()
+            with c2:
+                if st.button("⏩ All", use_container_width=True, key="stream_all"):
+                    st.session_state.auto_streaming = False
+                    for i in range(current, total):
+                        process_packet(st.session_state.packets[i])
+                        st.session_state.packet_history.append(st.session_state.packets[i])
+                        st.session_state.current_packet_idx = i + 1
+                    st.rerun()
+        else:
+            st.success(f"✅ All {total} packets done")
+
+        # Profile
+        st.markdown("---")
+        profile = st.session_state.current_profile
+        identity = profile.get("identity", {})
+        with st.expander(f"👤 {identity.get('name', 'User')}, age {identity.get('age', '?')}", expanded=False):
+            conditions = identity.get("known_conditions", [])
+            meds = identity.get("medications", [])
+            ec = identity.get("emergency_contact", {})
+            if conditions:
+                st.caption(f"🏥 {', '.join(conditions)}")
+            if meds:
+                st.caption(f"💊 {', '.join(meds)}")
+            if ec:
+                st.caption(f"📞 {ec.get('name', '')} — {ec.get('contact', '')}")
+
+        # Active Concerns (paragraph)
+        st.markdown("---")
+        concerns = profile.get("current_concerns", [])
+        patterns = profile.get("known_patterns", [])
+
+        st.markdown("**⚠️ Active Concerns**")
+        if concerns:
+            para = ". ".join(c.rstrip(". ") for c in concerns[-3:]) + ". Being monitored closely."
+            st.caption(para)
+        else:
+            st.caption("No active concerns. Everything looks normal.")
+
+        st.markdown("**📋 Patterns Found**")
+        if patterns:
+            para = ". ".join(p.rstrip(". ") for p in patterns[-3:]) + "."
+            st.caption(para)
+        else:
+            st.caption("No confirmed patterns yet — still learning.")
+
+        # Self-report form (enter key works!)
+        st.markdown("---")
+        with st.form("self_report_form", clear_on_submit=True):
+            note = st.text_input("📝 Tell me about yourself...",
+                                 placeholder="e.g., Feeling off, started new meds...")
+            submitted = st.form_submit_button("Submit", use_container_width=True)
+            if submitted and note:
+                send_chat(f"[Self-report] {note}")
+                st.rerun()
+
+
+# ═══════════════════════════════════════
+# MAIN AREA
+# ═══════════════════════════════════════
+if not st.session_state.current_profile:
+    st.markdown("# 🫀 Your Health Advisor")
+    st.info("👈 Select a scenario and click **Initialize / Reset** to begin.")
+    st.stop()
+
+chat_col, vitals_col = st.columns([6, 4])
+
+# ─── LEFT: Chat ───
+with chat_col:
+    st.markdown("### 🫀 Conversation")
+    
+    chat_container = st.container(height=650)
+    with chat_container:
+        for entry in st.session_state.conversation:
+            if entry["role"] == "user":
+                content = entry["content"]
+                if content.startswith("[Self-report]"):
+                    content = content.replace("[Self-report] ", "📝 ")
+                st.markdown(f'<div class="user-bubble">{content}</div>', unsafe_allow_html=True)
             else:
-                st.markdown("*No active concerns*")
+                btype = entry.get("type", "advisor")
+                severity = entry.get("severity", 0)
+                ts = entry.get("timestamp", "")
+                ts_str = f" · {ts[11:16]}" if ts and len(ts) > 11 else ""
+                notify = entry.get("notify_family", False)
 
-        with state_col3:
-            st.markdown("### Known Patterns")
-            if patterns:
-                for p in patterns:
-                    st.markdown(f"📋 {p}")
-            else:
-                st.markdown("*No patterns identified yet*")
-else:
-    st.markdown("*Process multiple packets to see trend charts.*")
+                if btype == "emergency":
+                    extra = "<br>🚨 <b>Family contact has been notified.</b>" if notify else ""
+                    st.markdown(f'<div class="emergency-bubble"><div class="advisor-label">🚨 EMERGENCY{ts_str}</div>{entry["content"]}{extra}</div>', unsafe_allow_html=True)
+                elif btype == "concern":
+                    st.markdown(f'<div class="concern-bubble"><div class="advisor-label">⚠️ Level {severity}{ts_str}</div>{entry["content"]}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="advisor-bubble"><div class="advisor-label">Health Advisor{ts_str}</div>{entry["content"]}</div>', unsafe_allow_html=True)
 
-# ─── Footer ───
-st.markdown("---")
-st.markdown(
-    '<div style="text-align: center; color: #8892a4; font-size: 12px;">'
-    '🫀 Adaptive Personal Health Agent — Powered by Groq (llama3-70b-8192) + LangGraph + ChromaDB'
-    '</div>',
-    unsafe_allow_html=True,
-)
+    # Chat input
+    user_input = st.chat_input("Ask about your health...")
+    if user_input:
+        send_chat(user_input)
+        st.rerun()
+
+
+# ─── RIGHT: Live Vitals Container ───
+with vitals_col:
+    st.markdown("### 📡 Live Vitals")
+    
+    vitals_container = st.container(height=650)
+    with vitals_container:
+        packet = st.session_state.last_packet_data
+        if packet:
+            vitals = packet.get("vitals", {})
+            movement = packet.get("movement", {})
+            sleep = packet.get("sleep_last_night", {})
+            context = packet.get("context", {})
+            ts = packet.get("timestamp", "")
+
+            st.caption(f"📅 {ts[:16] if ts else '—'}")
+
+            v1, v2 = st.columns(2)
+            with v1:
+                for label, key, unit in [("Heart Rate", "heart_rate", "bpm"), ("SpO₂", "spo2", "%"), ("Stress", "stress_score", "/100")]:
+                    val = vitals.get(key, "—")
+                    st.markdown(f'<div class="vital-card"><div class="vital-label">{label}</div><div class="vital-value">{val}</div><div class="vital-unit">{unit}</div></div>', unsafe_allow_html=True)
+            with v2:
+                for label, key, unit in [("HRV", "hrv", "ms"), ("Breathing", "breathing_rate", "/min"), ("Recovery", "recovery_score", "/100")]:
+                    val = vitals.get(key, "—")
+                    st.markdown(f'<div class="vital-card"><div class="vital-label">{label}</div><div class="vital-value">{val}</div><div class="vital-unit">{unit}</div></div>', unsafe_allow_html=True)
+
+            # Context line
+            activity = movement.get("activity_state", "—")
+            location = context.get("location_zone", "—")
+            tod = context.get("time_of_day", "—")
+            st.caption(f"🏃 {activity} · 📍 {location} · 🕐 {tod}")
+            st.caption(f"👣 {movement.get('steps_today', 0)} steps · 🔥 {movement.get('calories_burned', 0)} cal")
+
+            # Sleep
+            sleep_hrs = sleep.get("total_hours")
+            if sleep_hrs:
+                st.caption(f"😴 Sleep: {sleep_hrs}h · Eff: {sleep.get('sleep_efficiency', '?')}%")
+
+            # Trends
+            profile = st.session_state.current_profile
+            current_state = profile.get("current_state", {})
+            trends = {k: v for k, v in current_state.items() if v and v != "unknown"}
+            if trends:
+                st.markdown(f'<div class="section-hdr">Trends</div>', unsafe_allow_html=True)
+                for k, v in trends.items():
+                    label = k.replace("_7d", "").replace("_", " ").title()
+                    icon = "🔴" if v in ("declining","deteriorating","rising") else "🟢" if v == "improving" else "🔵"
+                    st.caption(f"{icon} {label}: {v}")
+
+            # Recent feed
+            if st.session_state.packet_history:
+                st.markdown(f'<div class="section-hdr">Feed</div>', unsafe_allow_html=True)
+                for pkt in reversed(st.session_state.packet_history[-5:]):
+                    pts = pkt.get("timestamp", "")[:16]
+                    phr = pkt.get("vitals", {}).get("heart_rate", "?")
+                    pstress = pkt.get("vitals", {}).get("stress_score", "?")
+                    st.markdown(f'<div class="feed-line">⏱ {pts} · HR {phr} · Stress {pstress}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown("*Waiting for telemetry...*")
+            st.caption("Press ▶ Start in the sidebar.")
+
+
+# ═══ AUTO-STREAM LOOP ═══
+if st.session_state.auto_streaming:
+    idx = st.session_state.current_packet_idx
+    total = len(st.session_state.packets)
+    if idx < total:
+        process_packet(st.session_state.packets[idx])
+        st.session_state.packet_history.append(st.session_state.packets[idx])
+        st.session_state.current_packet_idx = idx + 1
+        time.sleep(2)
+        st.rerun()
+    else:
+        st.session_state.auto_streaming = False
+        st.rerun()

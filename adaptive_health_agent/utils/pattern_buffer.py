@@ -33,6 +33,7 @@ class PatternBuffer:
             "temp_elevated": 0,
             "breathing_elevated": 0,
             "recovery_low": 0,
+            "sleep_efficiency_low": 0,
         }
 
     def increment(self, metric: str) -> None:
@@ -80,15 +81,16 @@ class PatternBuffer:
         ]
 
     def reset_confirmed(self, metric: str) -> None:
-        """Reset a confirmed pattern's counter back to zero.
+        """Reset a confirmed pattern's counter with cooldown.
 
-        Use after the confirmed pattern has been processed by the analyst.
+        Sets to -5 so it takes 8+ more consecutive deviations to re-confirm.
+        Prevents rapid re-triggering of the same pattern.
 
         Args:
             metric: The metric name to reset after confirmation processing.
         """
         if metric in self._counters:
-            self._counters[metric] = 0
+            self._counters[metric] = -5  # Cooldown: needs 8 more consecutive to re-confirm
 
     def get_count(self, metric: str) -> int:
         """Return the current counter value for a metric.

@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from graph.state import HealthAgentState
 from memory.episodic_memory import query_similar, get_recent
 from knowledge_base.loader import query_knowledge_base
-from memory.living_profile import load_profile
+from memory.living_profile import load_profile, add_concern
 
 load_dotenv()
 
@@ -145,6 +145,12 @@ def analyst_node(state: HealthAgentState) -> dict:
     # Update last message time if we're going to communicate
     if proceed_to_communicate:
         _last_message_times[user_id] = now
+
+    # Add to current concerns if analyst recommends it
+    if analyst_output.get("add_to_current_concerns") and severity_level >= 3:
+        trigger = analyst_output.get("trigger", "Unknown pattern")
+        concern_text = f"Level {severity_level}: {trigger} (detected {datetime.now().strftime('%b %d %H:%M')})"
+        add_concern(user_id, concern_text)
 
     return {
         "severity_level": severity_level,
@@ -343,25 +349,64 @@ def _call_analyst_llm(profile_summary: str, pattern_details: dict,
 
     try:
         response = analyst_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.3,
-            max_tokens=500,
+            temperature=0.2,
+            max_tokens=400,
         )
 
         content = response.choices[0].message.content.strip()
 
-        # Parse JSON (handle potential markdown wrapping)
-        if content.startswith("```"):
-            lines = content.split("\n")
-            content = "\n".join(lines[1:-1])
-        return json.loads(content)
+        # Robust JSON parsing — try multiple strategies
+        parsed = None
+
+        # Strategy 1: direct parse
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: strip markdown fences
+        if parsed is None and "```" in content:
+            try:
+                lines = content.split("\n")
+                inner = "\n".join(l for l in lines if not l.strip().startswith("```"))
+                parsed = json.loads(inner)
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: regex extract first JSON object
+        if parsed is None:
+            import re
+            match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
+            if match:
+                try:
+                    parsed = json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+
+        if parsed is not None:
+            return parsed
+
+        # All parsing failed — use rule-based fallback silently
+        severity = _estimate_severity_fallback(pattern_details)
+        return {
+            "severity_level": severity,
+            "trigger": ", ".join(confirmed),
+            "key_facts": [f"Pattern confirmed for {', '.join(confirmed)}"],
+            "historical_context": historical_context[:200],
+            "clinical_context": clinical_context[:200],
+            "recommended_action": "Monitor closely and alert if pattern persists",
+            "question_to_ask": None,
+            "notify_family": severity >= 5,
+            "add_to_current_concerns": severity >= 3,
+        }
 
     except Exception as e:
-        print(f"[Analyst] LLM call error: {e}")
+        print(f"[Analyst] API error: {e}")
         # Return a reasonable fallback based on pattern details
         severity = _estimate_severity_fallback(pattern_details)
         return {

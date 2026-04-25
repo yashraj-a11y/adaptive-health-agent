@@ -6,6 +6,7 @@ Adapts tone, directness, depth, and length to personal preferences.
 Handles emergency alerts (Level 5) with structured console output.
 
 Uses Groq LLM to generate personalized health messages.
+Includes RAG retrieval from episodic memory and medical KB for user-initiated chats.
 """
 
 import os
@@ -15,7 +16,8 @@ from groq import Groq
 from dotenv import load_dotenv
 
 from graph.state import HealthAgentState
-from memory.episodic_memory import log_episode
+from memory.episodic_memory import log_episode, query_similar, get_recent
+from knowledge_base.loader import query_knowledge_base
 from memory.living_profile import update_communication_profile
 
 load_dotenv()
@@ -69,6 +71,12 @@ def communicator_node(state: HealthAgentState) -> dict:
 
     # Step 3: Call Groq LLM to format the message
     final_message = _call_communicator_llm(analyst_output, style_instruction, severity_level)
+
+    # Step 3b: Append proactive question from profiler if available
+    pattern_details = state.get("pattern_details") or {}
+    proactive_question = pattern_details.get("proactive_question")
+    if proactive_question and severity_level <= 3:
+        final_message = final_message + "\n\n💭 " + proactive_question
 
     # Step 4: Append disclaimer for severity >= 3
     if severity_level >= 3:
@@ -212,8 +220,8 @@ def _call_communicator_llm(analyst_output: dict, style_instruction: str, severit
         str: The formatted message for the user.
     """
     system_prompt = (
-        "You are the Communicator agent. Deliver the health insight in the user's preferred style. "
-        "Write only the message — no preamble. Adapt tone, depth, and length to the profile provided."
+        "You are a personal health advisor on a smartwatch. Keep responses SHORT — 1 to 2 sentences max. "
+        "No preamble, no lists. Adapt tone to the style instructions. Be warm but concise."
     )
 
     user_prompt = (
@@ -225,18 +233,18 @@ def _call_communicator_llm(analyst_output: dict, style_instruction: str, severit
         f"Clinical context: {analyst_output.get('clinical_context', 'N/A')}\n"
         f"Recommended action: {analyst_output.get('recommended_action', 'N/A')}\n"
         f"Question to ask: {analyst_output.get('question_to_ask', 'None')}\n\n"
-        f"Write the message now. No JSON, no markdown — just the message text."
+        f"Write 1-2 sentences ONLY. No JSON, no markdown."
     )
 
     try:
         response = communicator_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.3,
-            max_tokens=500,
+            max_tokens=150,
         )
 
         return response.choices[0].message.content.strip()
@@ -269,10 +277,60 @@ def _handle_user_message(user_message: str, profile: dict,
     concerns = profile.get("current_concerns", [])
     patterns = profile.get("known_patterns", [])
 
+    # RAG Step 1: Query episodic memory for relevant personal history
+    try:
+        similar_episodes = query_similar(user_message, n_results=3,
+                                          where={"user_id": user_id})
+        recent_episodes = get_recent(user_id, days=7)
+    except Exception as e:
+        print(f"[Communicator] RAG episodic query error: {e}")
+        similar_episodes = []
+        recent_episodes = []
+
+    # RAG Step 2: Query medical knowledge base for clinical context
+    try:
+        clinical_docs = query_knowledge_base(user_message, n_results=2)
+    except Exception as e:
+        print(f"[Communicator] RAG KB query error: {e}")
+        clinical_docs = []
+
+    # Format RAG context
+    episodic_context = ""
+    if similar_episodes:
+        ep_parts = []
+        for i, ep in enumerate(similar_episodes[:3], 1):
+            meta = ep.get("metadata", {})
+            ep_parts.append(
+                f"  {i}. [{meta.get('event_type', '?')}] {meta.get('significance', '?')} "
+                f"at {meta.get('timestamp', '?')} — {ep.get('document', '')[:150]}"
+            )
+        episodic_context = "\n".join(ep_parts)
+
+    recent_context = ""
+    if recent_episodes:
+        rc_parts = []
+        for i, ep in enumerate(recent_episodes[:5], 1):
+            meta = ep.get("metadata", {})
+            rc_parts.append(
+                f"  {i}. [{meta.get('event_type', '?')}] {meta.get('timestamp', '?')} — "
+                f"{meta.get('agent_action_taken', 'N/A')}"
+            )
+        recent_context = "\n".join(rc_parts)
+
+    clinical_context = ""
+    if clinical_docs:
+        cl_parts = []
+        for i, doc in enumerate(clinical_docs[:2], 1):
+            meta = doc.get("metadata", {})
+            cl_parts.append(
+                f"  {i}. {meta.get('title', '?')} — {meta.get('recommended_action', 'N/A')}"
+            )
+        clinical_context = "\n".join(cl_parts)
+
     system_prompt = (
-        "You are the Communicator agent. The user is asking you a question about their health data. "
-        "Respond helpfully in their preferred style. You are a health monitoring assistant, not a doctor. "
-        "Do not diagnose. Reference their data when relevant."
+        "You are a personal health advisor on a smartwatch. The user is asking about their health. "
+        "Keep responses SHORT — 2 to 3 sentences max. Be helpful, warm, and reference their personal data. "
+        "Do not diagnose. No lists, no bullet points. Just a concise, caring response."
     )
 
     context_parts = [
@@ -281,6 +339,7 @@ def _handle_user_message(user_message: str, profile: dict,
         f"Name: {identity.get('name', 'Unknown')}",
         f"Age: {identity.get('age', 'Unknown')}",
         f"Conditions: {', '.join(identity.get('known_conditions', [])) or 'None'}",
+        f"Medications: {', '.join(identity.get('medications', [])) or 'None'}",
         f"\nCURRENT STATE:",
         f"Sleep trend: {current_state.get('sleep_trend_7d', 'unknown')}",
         f"Stress trend: {current_state.get('stress_trend_7d', 'unknown')}",
@@ -289,22 +348,37 @@ def _handle_user_message(user_message: str, profile: dict,
         f"\nCurrent concerns: {', '.join(concerns) or 'None'}",
         f"Known patterns: {', '.join(patterns) or 'None'}",
         f"\nBASELINES:",
-        f"Resting HR: {baselines.get('resting_hr', 'Learning...')}",
-        f"Typical HRV: {baselines.get('typical_hrv', 'Learning...')}",
-        f"Typical sleep: {baselines.get('typical_sleep_hours', 'Learning...')}hrs",
+        f"Resting HR: {baselines.get('resting_hr', 'Learning...')} bpm",
+        f"Typical HRV: {baselines.get('typical_hrv', 'Learning...')} ms",
+        f"Typical SpO2: {baselines.get('typical_spo2', 'Learning...')}%",
+        f"Typical sleep: {baselines.get('typical_sleep_hours', 'Learning...')} hrs",
+        f"Typical sleep efficiency: {baselines.get('typical_sleep_efficiency', 'Learning...')}%",
+        f"Typical stress score: {baselines.get('typical_stress_score', 'Learning...')}",
+        f"Typical recovery score: {baselines.get('typical_recovery_score', 'Learning...')}",
     ]
+
+    # Add RAG context if available
+    if episodic_context:
+        context_parts.append(f"\nRELEVANT PERSONAL HISTORY (from episodic memory):")
+        context_parts.append(episodic_context)
+    if recent_context:
+        context_parts.append(f"\nRECENT HEALTH EVENTS (last 7 days):")
+        context_parts.append(recent_context)
+    if clinical_context:
+        context_parts.append(f"\nCLINICAL KNOWLEDGE (evidence-based):")
+        context_parts.append(clinical_context)
 
     user_prompt = "\n".join(context_parts) + f"\n\nUSER MESSAGE: {user_message}"
 
     try:
         response = communicator_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.3,
-            max_tokens=500,
+            max_tokens=200,
         )
 
         agent_response = response.choices[0].message.content.strip()
