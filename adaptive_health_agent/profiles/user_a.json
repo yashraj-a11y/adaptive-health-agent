@@ -1,0 +1,50 @@
+{
+  "identity": {
+    "name": "Alex",
+    "age": 32,
+    "known_conditions": [],
+    "medications": [],
+    "goals": [
+      "manage_stress"
+    ],
+    "emergency_contact": {
+      "name": "Partner",
+      "contact": "555-0100"
+    }
+  },
+  "baselines": {
+    "status": "ESTABLISHED",
+    "resting_hr": 68,
+    "typical_hrv": 55,
+    "typical_spo2": 98,
+    "typical_skin_temp": 36.5,
+    "typical_sleep_hours": 7.5,
+    "typical_sleep_efficiency": 88,
+    "typical_daily_steps": 5000,
+    "typical_breathing_rate": 14,
+    "typical_stress_score": 25,
+    "typical_recovery_score": 70
+  },
+  "current_state": {
+    "sleep_trend_7d": "unknown",
+    "hrv_trend_7d": "unknown",
+    "stress_trend_7d": "unknown",
+    "recovery_trend_7d": "unknown",
+    "overall_trajectory": "unknown"
+  },
+  "known_patterns": [],
+  "communication_profile": {
+    "style": "balanced",
+    "directness": 3,
+    "depth": 3,
+    "tone": 3,
+    "length": 3,
+    "framing": 3,
+    "alert_sensitivity": "normal",
+    "best_engagement_times": [],
+    "engagement_patterns": "unknown"
+  },
+  "current_concerns": [],
+  "last_updated": "2026-04-25T16:39:54.104760",
+  "days_monitored": 20
+}
