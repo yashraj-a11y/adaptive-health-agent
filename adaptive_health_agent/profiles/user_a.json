@@ -10,12 +10,7 @@
     "emergency_contact": {
       "name": "Partner",
       "contact": "555-0100"
-    },
-    "directness": 1,
-    "depth": 2,
-    "tone": 1,
-    "length": 5,
-    "framing": 2
+    }
   },
   "baselines": {
     "status": "ESTABLISHED",
@@ -40,13 +35,11 @@
   "known_patterns": [
     "Sustained sleep efficiency low",
     "Sustained hrv low",
-    "Sustained breathing elevated",
-    "Sustained stress elevated",
-    "Sustained recovery low"
+    "Sustained breathing elevated"
   ],
   "communication_profile": {
     "style": "balanced",
-    "directness": 3.5,
+    "directness": 3,
     "depth": 3,
     "tone": 3,
     "length": 3,
@@ -56,15 +49,8 @@
     "engagement_patterns": "unknown"
   },
   "current_concerns": [
-    "Level 4: Metrics: sleep_efficiency_low (detected Apr 26 00:10)",
-    "Level 5: hrv_low (detected Apr 26 00:10)",
-    "Level 4: breathing_elevated (detected Apr 26 00:10)",
-    "Level 5: sleep_efficiency_low (detected Apr 26 00:10)",
-    "Level 5: hrv_low (detected Apr 26 00:35)",
-    "Level 4: breathing_elevated (detected Apr 26 00:35)",
-    "Level 5: hrv_low (detected Apr 26 00:38)",
-    "Level 4: breathing_elevated (detected Apr 26 00:38)"
+    "Level 4: hrv_low (detected Apr 26 01:33)"
   ],
-  "last_updated": "2026-04-26T00:39:08.701115",
+  "last_updated": "2026-04-26T01:33:16.614072",
   "days_monitored": 20
 }

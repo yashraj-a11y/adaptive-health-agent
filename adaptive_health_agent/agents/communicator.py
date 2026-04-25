@@ -220,7 +220,8 @@ def _call_communicator_llm(analyst_output: dict, style_instruction: str, severit
         str: The formatted message for the user.
     """
     system_prompt = (
-        "You are a personal health advisor on a smartwatch. Keep responses SHORT — 1 to 2 sentences max. "
+        "You are AVA (Adaptive Virtual Assistant), a highly advanced personal health advisor living on a smartwatch. "
+        "Speak in the first person as AVA. Keep responses SHORT — 1 to 2 sentences max. "
         "No preamble, no lists. Adapt tone to the style instructions. Be warm but concise."
     )
 
@@ -328,7 +329,8 @@ def _handle_user_message(user_message: str, profile: dict,
         clinical_context = "\n".join(cl_parts)
 
     system_prompt = (
-        "You are a personal health advisor on a smartwatch. The user is asking about their health. "
+        "You are AVA (Adaptive Virtual Assistant), a highly advanced personal health advisor living on a smartwatch. "
+        "The user is asking about their health or conversing with you. Respond as AVA in the first person. "
         "Keep responses SHORT — 2 to 3 sentences max. Be helpful, warm, and reference their personal data. "
         "Do not diagnose. No lists, no bullet points. Just a concise, caring response."
     )
@@ -462,6 +464,10 @@ def apply_communication_feedback(user_id: str, feedback_type: str) -> None:
         "engages_data": {"depth": -0.5},
         "ignores_long": {"length": 0.5},
         "anxious": {"framing": 0.5},
+        "requests_warmth": {"tone": 2.0},       # Force tone warmer (up to 5)
+        "requests_brief": {"directness": 2.0},  # Force directness (up to 5)
+        "requests_detail": {"depth": -2.0},     # Force depth (down to 1)
+        "requests_pirate": {"tone": 1.0, "style": "pirate"},
     }
 
     if feedback_type not in adjustments:
@@ -469,6 +475,9 @@ def apply_communication_feedback(user_id: str, feedback_type: str) -> None:
 
     updates = {}
     for key, delta in adjustments[feedback_type].items():
+        if key == "style":
+            updates["style"] = delta
+            continue
         # The update_communication_profile function handles clamping to 1-5
         # We need to get the current value and add delta
         from memory.living_profile import load_profile

@@ -1,5 +1,5 @@
 """
-Streamlit UI — Adaptive Personal Health Agent
+Streamlit UI — AVA (Adaptive Virtual Assistant)
 Cool blue theme, separate scrollable containers, natural adaptation.
 """
 
@@ -221,8 +221,15 @@ def process_packet(packet):
 def send_chat(message):
     profile = st.session_state.current_profile
 
-    # LangGraph and memory take care of the adaptation.
-    # No artificial prepending of recent context needed.
+    # Build recent conversation context under the hood
+    recent_conv = ""
+    for entry in st.session_state.conversation[-6:]:
+        role = "You" if entry["role"] == "user" else "AVA"
+        recent_conv += f"{role}: {entry['content'][:150]}\n"
+
+    # Prepend history so the LLM has short-term memory to adhere to instructions
+    contextualized_message = f"RECENT CONVERSATION HISTORY:\n{recent_conv}\n\nCURRENT USER MESSAGE:\n{message}"
+
     state = {
         "living_profile": profile,
         "current_packet": {"user_id": st.session_state.current_user_id,
@@ -231,7 +238,7 @@ def send_chat(message):
         "pattern_details": None, "severity_level": None,
         "analyst_output": None, "proceed_to_communicate": False,
         "final_message": None, "notify_family": False,
-        "user_message": message,
+        "user_message": contextualized_message,
         "agent_response": None,
     }
     try:
@@ -243,15 +250,28 @@ def send_chat(message):
     st.session_state.conversation.append({"role": "user", "content": message})
     st.session_state.conversation.append({"role": "advisor", "type": "advisor", "content": response})
 
-    # The magic of adapting happens here:
+    # The magic of adapting the Living Profile based on keywords:
     try:
         from agents.communicator import apply_communication_feedback
         uid = st.session_state.current_user_id
         ml = message.lower().strip()
+        
+        # Original triggers
         if len(ml.split()) <= 3 and ml in ("ok","okay","sure","fine","k","thanks","got it"):
             apply_communication_feedback(uid, "dismissive")
         if any(kw in ml for kw in ("number","data","metric","stat","bpm","hrv")):
             apply_communication_feedback(uid, "engages_data")
+            
+        # New explicit tone request triggers
+        if any(kw in ml for kw in ("brief", "short", "direct", "quick", "cut to the chase", "less words")):
+            apply_communication_feedback(uid, "requests_brief")
+        if any(kw in ml for kw in ("warm", "friendly", "nice", "kind")):
+            apply_communication_feedback(uid, "requests_warmth")
+        if any(kw in ml for kw in ("detailed", "explain", "more info", "elaborate")):
+            apply_communication_feedback(uid, "requests_detail")
+        if "pirate" in ml:
+            apply_communication_feedback(uid, "requests_pirate")
+            
     except Exception:
         pass
 
@@ -346,14 +366,14 @@ with st.sidebar:
             para = ". ".join(c.rstrip(". ") for c in concerns[-3:]) + ". Being monitored closely."
             st.caption(para)
         else:
-            st.caption("No active concerns. Everything looks normal.")
+            st.caption("No reading")
 
         st.markdown("**📋 Patterns Found**")
         if patterns:
             para = ". ".join(p.rstrip(". ") for p in patterns[-3:]) + "."
             st.caption(para)
         else:
-            st.caption("No confirmed patterns yet — still learning.")
+            st.caption("No reading")
 
         # Self-report form (enter key works!)
         st.markdown("---")
@@ -401,13 +421,30 @@ with chat_col:
                 elif btype == "concern":
                     st.markdown(f'<div class="concern-bubble"><div class="advisor-label">⚠️ Level {severity}{ts_str}</div>{entry["content"]}</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f'<div class="advisor-bubble"><div class="advisor-label">Health Advisor{ts_str}</div>{entry["content"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="advisor-bubble"><div class="advisor-label">AVA{ts_str}</div>{entry["content"]}</div>', unsafe_allow_html=True)
 
     # Chat input
     user_input = st.chat_input("Ask about your health...")
     if user_input:
         send_chat(user_input)
         st.rerun()
+
+    # JS hack to auto-scroll the chat container (stVerticalBlock) to the bottom
+    import streamlit.components.v1 as components
+    components.html(
+        """
+        <script>
+        // Find all Streamlit vertical blocks (containers with height)
+        var blocks = window.parent.document.querySelectorAll('div[data-testid="stVerticalBlock"]');
+        if (blocks.length > 0) {
+            // The first one is the chat container
+            var chatContainer = blocks[0];
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        </script>
+        """,
+        height=0
+    )
 
 
 # ─── RIGHT: Live Vitals Container ───
