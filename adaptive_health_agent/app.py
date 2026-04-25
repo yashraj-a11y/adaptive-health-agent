@@ -11,6 +11,14 @@ from dotenv import load_dotenv
 load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Bridge Streamlit secrets to environment variables for Cloud deployment
+for key in ["GROQ_API_KEY_PROFILER", "GROQ_API_KEY_ANALYST", "GROQ_API_KEY_COMMUNICATOR"]:
+    if key in st.secrets:
+        os.environ[key] = st.secrets[key]
+    elif key in os.environ:
+        pass # Already set via .env
+
+
 import warnings
 warnings.filterwarnings("ignore", message=".*torchvision.*")
 warnings.filterwarnings("ignore", category=UserWarning)
