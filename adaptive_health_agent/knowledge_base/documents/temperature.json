@@ -1,0 +1,80 @@
+[
+  {
+    "id": "kb_temp_001",
+    "domain": "thermoregulation",
+    "signals_involved": ["skin_temperature"],
+    "duration_context": "sustained_hours",
+    "user_context": "any",
+    "title": "Skin Temperature Baseline Deviation",
+    "interpretation": "Normal skin temperature ranges from 36.0-36.8°C with circadian variation (lower in morning, higher in evening). A sustained elevation of 0.8°C or more above personal baseline may indicate fever onset, inflammation, or hormonal changes. Wearable skin temperature differs from core body temperature by approximately 0.5-1.0°C.",
+    "severity_suggestion": 2,
+    "recommended_agent_action": "Track skin temperature deviation from personal baseline. If elevated by 0.8°C+ for 4+ hours, cross-reference with other illness indicators (HR elevation, HRV decline, SpO2 changes).",
+    "what_not_to_conclude": "Do not equate skin temperature with core temperature. Do not diagnose fever from wearable data alone. Environmental temperature and clothing affect readings.",
+    "sources": ["Journal of Medical Internet Research - Wearable Thermometry", "Physiological Measurement - Skin vs Core Temperature"]
+  },
+  {
+    "id": "kb_temp_002",
+    "domain": "thermoregulation",
+    "signals_involved": ["skin_temperature", "heart_rate", "hrv"],
+    "duration_context": "multi_day_trend",
+    "user_context": "any",
+    "title": "Illness Onset Temperature Signature",
+    "interpretation": "A gradual increase in skin temperature over 2-3 days, combined with rising resting HR and declining HRV, forms a characteristic pre-symptomatic illness signature. Research with wearables has shown this pattern can appear 24-48 hours before the user feels symptomatic, providing an early warning window.",
+    "severity_suggestion": 2,
+    "recommended_agent_action": "If temperature, HR, and HRV all trend in illness direction for 2+ days, proactively alert user about potential illness onset. Suggest precautionary rest and hydration.",
+    "what_not_to_conclude": "Do not diagnose specific infections. The pattern indicates general immune activation, not a specific pathogen.",
+    "sources": ["Nature Medicine - Wearable Pre-Symptomatic Detection", "BMJ - Early Illness Biomarkers"]
+  },
+  {
+    "id": "kb_temp_003",
+    "domain": "thermoregulation",
+    "signals_involved": ["skin_temperature"],
+    "duration_context": "circadian_pattern",
+    "user_context": "any",
+    "title": "Disrupted Temperature Circadian Rhythm",
+    "interpretation": "Normal skin temperature follows a circadian pattern: lowest in early morning (around 4-6 AM) and highest in late afternoon/evening. A flattened or inverted circadian temperature pattern suggests disrupted circadian rhythm, often associated with shift work, jet lag, or chronic sleep disruption.",
+    "severity_suggestion": 1,
+    "recommended_agent_action": "Monitor circadian temperature variation. If the pattern flattens or inverts for 5+ days, note as insight related to circadian disruption.",
+    "what_not_to_conclude": "Do not diagnose circadian rhythm disorder. Environmental temperature control and clothing choices significantly affect measured patterns.",
+    "sources": ["Chronobiology International - Temperature Rhythm", "Sleep Medicine Reviews - Circadian Biomarkers"]
+  },
+  {
+    "id": "kb_temp_004",
+    "domain": "thermoregulation",
+    "signals_involved": ["skin_temperature", "stress_score", "eda_stress_indicator"],
+    "duration_context": "acute_minutes",
+    "user_context": "any",
+    "title": "Stress-Induced Temperature Change",
+    "interpretation": "Acute stress can cause peripheral vasoconstriction leading to decreased skin temperature at extremities, or vasodilation in some individuals causing increased skin temperature. The direction of change varies by individual. When concurrent with high EDA and stress score, temperature changes are likely stress-mediated.",
+    "severity_suggestion": 1,
+    "recommended_agent_action": "Note temperature changes concurrent with acute stress as context. Use this relationship to calibrate temperature baselines — exclude stress episodes from baseline computation.",
+    "what_not_to_conclude": "Do not interpret stress-related temperature changes as fever or illness. The mechanism is vascular, not infectious.",
+    "sources": ["Psychophysiology - Stress and Peripheral Temperature", "Biofeedback - Temperature and ANS"]
+  },
+  {
+    "id": "kb_temp_005",
+    "domain": "thermoregulation",
+    "signals_involved": ["skin_temperature", "activity_state"],
+    "duration_context": "during_exercise",
+    "user_context": "active",
+    "title": "Exercise-Related Temperature Elevation",
+    "interpretation": "Skin temperature increases during exercise due to increased metabolic heat production and blood flow to the skin for thermoregulation. Elevations of 1-2°C during intense activity are normal. Failure to return to baseline within 30 minutes post-exercise may indicate dehydration or heat stress.",
+    "severity_suggestion": 1,
+    "recommended_agent_action": "Exclude exercise periods from baseline temperature computation. Only flag if post-exercise temperature remains elevated for 30+ minutes, suggesting heat stress or dehydration.",
+    "what_not_to_conclude": "Do not flag exercise temperature increases as illness. This is normal physiology.",
+    "sources": ["Journal of Applied Physiology - Exercise Thermoregulation", "Sports Medicine - Heat Stress Monitoring"]
+  },
+  {
+    "id": "kb_temp_006",
+    "domain": "thermoregulation",
+    "signals_involved": ["skin_temperature", "spo2", "breathing_rate"],
+    "duration_context": "multi_day_trend",
+    "user_context": "any",
+    "title": "Fever with Respiratory Compromise",
+    "interpretation": "Elevated skin temperature combined with declining SpO2 and increased breathing rate over 2-3 days suggests respiratory infection with potential lower airway involvement. This triad warrants closer monitoring as it may indicate progression from upper to lower respiratory tract infection.",
+    "severity_suggestion": 3,
+    "recommended_agent_action": "If all three signals (temperature up, SpO2 down, breathing rate up) persist for 2+ days, escalate to Level 3. Recommend medical consultation.",
+    "what_not_to_conclude": "Do not diagnose pneumonia or bronchitis. The pattern warrants medical evaluation but is not sufficient for diagnosis.",
+    "sources": ["Lancet Respiratory Medicine - Vital Sign Trends in RTI", "WHO - Respiratory Infection Assessment"]
+  }
+]
