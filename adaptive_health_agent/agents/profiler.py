@@ -22,7 +22,7 @@ from utils.pattern_buffer import PatternBuffer
 load_dotenv()
 
 # Groq client for the Profiler agent
-profiler_client = Groq(api_key=os.getenv("GROQ_API_KEY_PROFILER"))
+profiler_client = Groq(api_key=os.getenv("GROQ_API_KEY_PROFILER", "missing_key_please_add_to_secrets"))
 
 # Module-level PatternBuffer instance (persists across packets in a session)
 _pattern_buffer = PatternBuffer()

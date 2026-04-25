@@ -23,7 +23,7 @@ from memory.living_profile import update_communication_profile
 load_dotenv()
 
 # Groq client for the Communicator agent
-communicator_client = Groq(api_key=os.getenv("GROQ_API_KEY_COMMUNICATOR"))
+communicator_client = Groq(api_key=os.getenv("GROQ_API_KEY_COMMUNICATOR", "missing_key_please_add_to_secrets"))
 
 
 def communicator_node(state: HealthAgentState) -> dict:

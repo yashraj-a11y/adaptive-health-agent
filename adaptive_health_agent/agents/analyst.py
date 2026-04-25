@@ -22,7 +22,7 @@ from memory.living_profile import load_profile, add_concern
 load_dotenv()
 
 # Groq client for the Analyst agent
-analyst_client = Groq(api_key=os.getenv("GROQ_API_KEY_ANALYST"))
+analyst_client = Groq(api_key=os.getenv("GROQ_API_KEY_ANALYST", "missing_key_please_add_to_secrets"))
 
 MESSAGE_COOLDOWN_MINUTES = int(os.getenv("MESSAGE_COOLDOWN_MINUTES", 120))
 
