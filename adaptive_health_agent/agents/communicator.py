@@ -239,7 +239,7 @@ def _call_communicator_llm(analyst_output: dict, style_instruction: str, severit
 
     try:
         response = communicator_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -374,7 +374,7 @@ def _handle_user_message(user_message: str, profile: dict,
 
     try:
         response = communicator_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

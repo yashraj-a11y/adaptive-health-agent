@@ -6,7 +6,7 @@ A completely dynamic, LLM-powered wearable health advisor. Instead of relying on
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red.svg)
 ![LangGraph](https://img.shields.io/badge/LangGraph-Agentic-green.svg)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector-orange.svg)
-![Groq](https://img.shields.io/badge/Groq-Llama_3.1_8B-black.svg)
+![Groq](https://img.shields.io/badge/Groq-GPT--OSS_20B-black.svg)
 
 ---
 

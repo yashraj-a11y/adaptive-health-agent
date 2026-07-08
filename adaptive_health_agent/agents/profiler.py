@@ -450,7 +450,7 @@ def _call_profiler_llm(packet: dict, deviation_summary: list, baseline_status: s
 
     try:
         response = profiler_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

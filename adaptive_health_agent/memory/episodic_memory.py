@@ -2,8 +2,8 @@
 Episodic Memory Module
 
 ChromaDB-backed storage for health episodes and medical knowledge.
-Uses PersistentClient for durable local storage and SentenceTransformer
-(all-MiniLM-L6-v2) for embedding generation.
+Uses PersistentClient for durable local storage and ChromaDB's built-in
+ONNX all-MiniLM-L6-v2 embedder (no torch, so it fits free hosting tiers).
 
 Two collections:
   - "episodic_memory": Stores health episodes (anomalies, patterns, conversations)
@@ -13,7 +13,7 @@ Two collections:
 import os
 import chromadb
 from datetime import datetime, timedelta
-from sentence_transformers import SentenceTransformer
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +21,7 @@ load_dotenv()
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 
 # Initialize the embedding model (loaded once at module import)
-_embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+_embedding_model = ONNXMiniLM_L6_V2()
 
 # Initialize ChromaDB persistent client
 _chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
@@ -47,7 +47,7 @@ def get_embedding(text: str) -> list:
     Returns:
         list: Embedding vector as a list of floats.
     """
-    return _embedding_model.encode(text).tolist()
+    return [float(x) for x in _embedding_model([text])[0]]
 
 
 def get_chroma_client():
