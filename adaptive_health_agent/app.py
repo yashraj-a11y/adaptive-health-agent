@@ -484,7 +484,8 @@ with st.sidebar:
                     st.rerun()
             st.caption(f"{current} of {total} packets processed")
         else:
-            st.success(f"All {total} packets processed", icon="✅")
+            st.markdown(f'<span class="pill done"><span class="dot"></span>All {total} packets processed</span>',
+                        unsafe_allow_html=True)
 
         profile = st.session_state.current_profile
         identity = profile.get("identity", {})
@@ -594,7 +595,8 @@ chat_col, vitals_col = st.columns([11, 9], gap="medium")
 
 # ─── LEFT: Chat ───
 with chat_col:
-    st.markdown(f'<div class="pane-title">Conversation<small>{len(st.session_state.conversation)} messages</small></div>',
+    n_msgs = len(st.session_state.conversation)
+    st.markdown(f'<div class="pane-title">Conversation<small>{n_msgs} message{"" if n_msgs == 1 else "s"}</small></div>',
                 unsafe_allow_html=True)
     with st.container(height=600, border=True, **AUTOSCROLL):
         st.markdown("".join(message_html(e) for e in st.session_state.conversation), unsafe_allow_html=True)
