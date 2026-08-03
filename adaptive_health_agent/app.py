@@ -48,11 +48,15 @@ st.markdown("""
     --accent: #3987e5; --accent-soft: rgba(57,135,229,0.14);
     --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --serious: #ec835a;
 }
-html, body, .stApp, [class*="st-"] { font-family: 'Inter', sans-serif; }
+/* Leave Streamlit's Material icon font alone, or icons render as their names */
+html, body, .stApp,
+.stApp :is(p, div, span, label, button, input, textarea, li, h1, h2, h3, h4, td, th):not([data-testid="stIconMaterial"]) {
+    font-family: 'Inter', sans-serif;
+}
 .stApp { background: radial-gradient(1200px 600px at 10% -10%, #13284d 0%, var(--bg) 55%) fixed; }
 .block-container { padding-top: 2.2rem; padding-bottom: 1rem; max-width: 1500px; }
 section[data-testid="stSidebar"] { background: #08101f; border-right: 1px solid var(--line); }
-header[data-testid="stHeader"] { background: transparent; }
+header[data-testid="stHeader"] { background: rgba(11,17,32,.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 
 /* ── Brand ── */
 .brand { display:flex; align-items:center; gap:10px; margin: 0 0 4px; }
@@ -121,7 +125,7 @@ header[data-testid="stHeader"] { background: transparent; }
 .vcard.warn::before { background: var(--warn); }
 .vcard.crit::before { background: var(--crit); }
 .vcard.na::before { background: var(--line); }
-.vhead { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--ink-2); font-weight:500; }
+.vhead { display:flex; flex-wrap:wrap; gap:2px 6px; justify-content:space-between; align-items:center; font-size:11px; color:var(--ink-2); font-weight:500; }
 .vval { font-size:25px; font-weight:700; color:var(--ink); margin-top:4px; line-height:1.1; }
 .vval span { font-size:11.5px; color:var(--ink-3); font-weight:500; margin-left:3px; }
 .vdelta { font-size:11px; color:var(--ink-3); margin-top:3px; }
@@ -148,6 +152,40 @@ header[data-testid="stHeader"] { background: transparent; }
 .scenario h3 { margin:0 0 2px; font-size:18px; color:var(--ink); }
 .scenario .sub { font-size:12.5px; color:var(--ink-3); margin-bottom:10px; }
 .scenario p { font-size:13.5px; color:var(--ink-2); line-height:1.55; margin:0 0 10px; }
+
+/* ── Tablet ── */
+@media (max-width: 1024px) {
+    .topbar { flex-direction:column; align-items:stretch; }
+    .stats { justify-content:space-between; }
+    .progress { flex:1 1 160px; }
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+    .block-container { padding: 3.2rem 0.8rem 1rem; }
+    .topbar { padding:12px 14px; gap:12px; border-radius:14px; }
+    .avatar-lg { width:38px; height:38px; font-size:15px; }
+    .who-name { font-size:16px; }
+    .stats { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px 8px; }
+    .stats > .progress { grid-column: 1 / span 3; width:auto; }
+    .stats > .pill { justify-self:end; align-self:center; }
+    .stat-v { font-size:17px; }
+    .stat-l { font-size:9.5px; letter-spacing:.04em; }
+    .pane-title { margin-top:6px; }
+    /* Fixed pane heights live on the wrapper (as flex-basis) around each keyed container */
+    :has(> .st-key-chat_pane) { flex: 0 0 62vh !important; height: 62vh !important; }
+    :has(> .st-key-vitals_pane) { flex: 0 0 auto !important; height: auto !important; }
+    .st-key-vitals_pane { flex: 0 0 auto !important; height: auto !important; overflow: visible !important; }
+    .bubble { max-width: 88%; font-size:13.5px; padding:9px 12px; }
+    .avatar { flex-basis:26px; height:26px; font-size:10.5px; }
+    .vgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap:8px; }
+    .vcard { padding:10px; }
+    .vval { font-size:22px; }
+    .hero { padding-top:8px; }
+    .hero h1 { font-size:28px; }
+    .hero p { font-size:14.5px; }
+    .feed th, .feed td { padding:4px 3px; font-size:11px; }
+}
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -346,7 +384,7 @@ def esc(value):
 
 def render_text(text):
     """Escape model/user text, then allow **bold** and line breaks."""
-    out = esc(text)
+    out = esc(str(text).strip())
     out = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", out)
     return out.replace("\n", "<br>")
 
@@ -502,7 +540,9 @@ with st.sidebar:
         st.markdown("".join(f'<span class="chip">{c}</span>' for c in chips), unsafe_allow_html=True)
 
         st.markdown('<div class="eyebrow" style="margin-top:14px">Active concerns</div>', unsafe_allow_html=True)
-        concerns = profile.get("current_concerns", [])
+        # Same alert is re-logged on every detection; show each distinct concern once
+        concerns = list(dict.fromkeys(re.sub(r"\s*\(detected[^)]*\)", "", c).replace("_", " ")
+                                      for c in profile.get("current_concerns", [])))
         if concerns:
             st.markdown("".join(f'<div class="side-text">• {esc(c)}</div>' for c in concerns[-3:]), unsafe_allow_html=True)
         else:
@@ -598,7 +638,7 @@ with chat_col:
     n_msgs = len(st.session_state.conversation)
     st.markdown(f'<div class="pane-title">Conversation<small>{n_msgs} message{"" if n_msgs == 1 else "s"}</small></div>',
                 unsafe_allow_html=True)
-    with st.container(height=600, border=True, **AUTOSCROLL):
+    with st.container(height=600, border=True, key="chat_pane", **AUTOSCROLL):
         st.markdown("".join(message_html(e) for e in st.session_state.conversation), unsafe_allow_html=True)
 
     user_input = st.chat_input(f"Ask AVA anything, {name}…")
@@ -614,7 +654,7 @@ with vitals_col:
     when = datetime.fromisoformat(ts).strftime("%a %d %b · %H:%M") if ts else "No data yet"
     st.markdown(f'<div class="pane-title">Live vitals<small>{esc(when)}</small></div>', unsafe_allow_html=True)
 
-    with st.container(height=600, border=True):
+    with st.container(height=600, border=True, key="vitals_pane"):
         if not packet:
             st.markdown('<div style="text-align:center;padding:120px 20px"><div style="font-size:42px">📡</div>'
                         '<div style="font-size:15px;font-weight:600;margin-top:8px">Waiting for telemetry</div>'
@@ -658,7 +698,7 @@ with vitals_col:
                 st.markdown('<div class="section-hdr">7-day trends</div>', unsafe_allow_html=True)
                 rows = []
                 for k, v in trends.items():
-                    tlabel = k.replace("_7d", "").replace("_trend", "").replace("_", " ").title()
+                    tlabel = k.replace("_7d", "").replace("_trend", "").replace("_", " ").title().replace("Hrv", "HRV")
                     tone = "bad" if v in ("declining", "deteriorating", "rising") else "good" if v == "improving" else "neutral"
                     arrow = {"bad": "↘" if v != "rising" else "↗", "good": "↗", "neutral": "→"}[tone]
                     rows.append(f'<div class="trend-row"><span>{esc(tlabel)}</span><b class="{tone}">{arrow} {esc(v)}</b></div>')
