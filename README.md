@@ -8,6 +8,10 @@ A completely dynamic, LLM-powered wearable health advisor. Instead of relying on
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector-orange.svg)
 ![Groq](https://img.shields.io/badge/Groq-GPT--OSS_20B-black.svg)
 
+## 🔗 Live Demo
+
+**Try it here: [ava-healthagent.streamlit.app](https://ava-healthagent.streamlit.app/)**
+
 ---
 
 ## 🌟 Key Features
