@@ -1,90 +1,153 @@
-# 🫀 AVA (Adaptive Virtual Assistant)
+# 🫀 AVA — Adaptive Virtual Assistant
 
-A completely dynamic, LLM-powered wearable health advisor. Instead of relying on static dashboards and simple alerts, AVA features a **3-agent architecture** that simulates a next-generation smartwatch experience: it monitors live vitals, learns your baselines, detects long-term patterns, and proactively talks to you in a tone tailored specifically to your personality.
+**A wearable health advisor that learns how you like to be spoken to.**
 
+AVA watches a live stream of smartwatch telemetry, compares every reading against *your* personal baseline, and only speaks up when something genuinely matters — in a tone tailored to you. A 3-agent LangGraph pipeline does the thinking; a Streamlit dashboard shows it happening in real time.
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-ava--healthagent.streamlit.app-FF4B4B?logo=streamlit&logoColor=white)](https://ava-healthagent.streamlit.app/)
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red.svg)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.56-red.svg)
 ![LangGraph](https://img.shields.io/badge/LangGraph-Agentic-green.svg)
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector-orange.svg)
 ![Groq](https://img.shields.io/badge/Groq-GPT--OSS_20B-black.svg)
 
-## 🔗 Live Demo
-
-**Try it here: [ava-healthagent.streamlit.app](https://ava-healthagent.streamlit.app/)**
+### 👉 [Try the live demo](https://ava-healthagent.streamlit.app/)
 
 ---
 
-## 🌟 Key Features
+## 📖 Contents
 
-* **Live Telemetry Stream:** Simulates a wearable data stream (Heart Rate, HRV, SpO₂, Stress, Recovery, Sleep) feeding into the agent in real-time.
-* **The Living Profile:** A LangGraph state object that tracks your physical baselines and dynamically updates your *communication profile* (directness, length, tone) based on how you reply to the agent in chat.
-* **Episodic Memory (RAG):** Powered by **ChromaDB**. Anomalies and conversations are stored as memories, allowing the agent to recall past events ("You had a similar stress spike last week").
-* **Smart Cost / Rate Limiting:** Avoids LLM calls on every packet. The system uses lightweight math to detect deviations and a "Pattern Buffer" (requiring 3 consecutive anomalies) before waking up the LLMs.
-* **Sleek Split-Screen UI:** Built in Streamlit. Left side: Chat interface. Right side: Live streaming vitals panel.
+- [Features](#-features)
+- [How it works](#-how-it-works)
+- [Using the app](#-using-the-app)
+- [Run locally](#-run-locally)
+- [Deploy to Streamlit Cloud](#-deploy-to-streamlit-cloud)
+- [Configuration](#-configuration)
+- [Project structure](#-project-structure)
 
-## 🧠 The 3-Agent Architecture
+## 🌟 Features
 
-1. **Profiler:** The silent watcher. Analyzes incoming telemetry packets against your established baselines. Tracks deviations using a pattern buffer. Once a pattern is confirmed (e.g., 3 consecutive elevated stress packets), it hands off to the Analyst.
-2. **Analyst:** The doctor. Takes the confirmed pattern, queries the episodic memory (ChromaDB) and medical knowledge base, and assigns a Severity Level (1-5). It drafts the facts and passes them to the Communicator.
-3. **Communicator:** The bedside manner. Takes the Analyst's facts and rewrites them based on your Living Profile (e.g., "Warm & Friendly" vs "Brief & Direct"). Handles all direct chat interaction with the user.
+| | |
+|---|---|
+| 📡 **Live telemetry stream** | Simulated wearable feed — heart rate, HRV, SpO₂, breathing, stress, recovery, sleep — processed packet by packet. |
+| 🎯 **Baseline-aware vitals** | Each reading is shown against the user's own baseline and flagged *Normal / Watch / Alert*, with trend charts and a dashed baseline line. |
+| 🧬 **The Living Profile** | A persistent state object tracking physical baselines and a *communication profile* (directness, depth, tone, length, framing) that shifts based on how you reply. |
+| 🧠 **Episodic memory (RAG)** | ChromaDB stores anomalies and conversations so the agent can recall past events ("you had a similar stress spike last week"). |
+| 💸 **Cost-aware by design** | Cheap math detects deviations; a **pattern buffer** (3 consecutive anomalies) must confirm before any LLM is woken up. A cooldown stops message spam. |
+| 🚨 **Escalation** | Severity levels 1–5. Level 5 produces an emergency message and notifies the user's emergency contact. |
+| 📱 **Responsive UI** | Dark dashboard with chat and vitals side by side on desktop, stacked on mobile. |
 
-## 🚀 How to Run Locally
+## 🧠 How it works
 
-### 1. Clone & Setup
+```text
+ telemetry packet
+        │
+        ▼
+ ┌─────────────┐  deviation +   ┌─────────────┐  severity 1–5  ┌───────────────┐
+ │  Profiler   │ ─ pattern ───▶ │   Analyst   │ ─ + context ─▶ │ Communicator  │ ─▶ message to user
+ │ (watcher)   │   confirmed    │ (the doctor)│                │ (bedside      │
+ └─────────────┘                └──────┬──────┘                │  manner)      │
+   baselines +                          │                       └───────┬───────┘
+   pattern buffer              ChromaDB: episodic memory              │
+                               + medical knowledge base        Living Profile
+                                                               (tone adapts)
+```
+
+1. **Profiler** — the silent watcher. Compares packets to the user's baselines and tracks deviations in a pattern buffer. Once a pattern is confirmed (e.g. 3 consecutive elevated-stress packets) it hands off.
+2. **Analyst** — the doctor. Queries episodic memory and the medical knowledge base (RAG), then assigns a severity level (1–5) and drafts the facts.
+3. **Communicator** — the bedside manner. Rewrites the Analyst's facts using the Living Profile ("warm & friendly" vs "brief & direct") and handles all direct chat.
+
+## 🎮 Using the app
+
+1. **Pick a scenario** on the landing page:
+   - 👤 **Alex, 32** — chronic stress: sleep, HRV and recovery slowly deteriorate.
+   - 👵 **Eleanor, 72** — acute emergency: hypertension + type 2 diabetes, sudden cardiac-style event.
+2. **Stream the vitals** with **▶ Play** (one packet every 2 seconds), or **⏩ Skip to end** to process everything at once. Pause and resume any time.
+3. **Watch the dashboard:** vital cards update against baseline, history charts fill in, and AVA messages you when a confirmed pattern appears.
+4. **Chat with AVA** — and watch it adapt:
+
+   | Try saying… | AVA learns… |
+   |---|---|
+   | "ok", "sure", "fine" | you're being dismissive → shorter, more engaging replies |
+   | "what's my HRV?", "show me the numbers" | you like data |
+   | "keep it brief", "cut to the chase" | shorter, more direct |
+   | "be warmer", "be friendly" | a warmer tone |
+   | "explain in detail", "elaborate" | longer, deeper answers |
+
+5. **Self-report** how you feel from the sidebar (e.g. "started new meds") and AVA factors it in.
+
+> **Note:** AVA is a technology demo running on simulated data. It is not a medical device and does not give medical advice.
+
+## 💻 Run locally
+
+**Prerequisites:** Python 3.10+ and a free [Groq API key](https://console.groq.com/).
+
 ```bash
-git clone <your-repo-url>
-cd HyperPersonalised_WearableSmartWatch_AGENT
+# 1. Clone
+git clone https://github.com/yashraj-a11y/adaptive-health-agent.git
+cd adaptive-health-agent/adaptive_health_agent
 
-# Setup virtual environment
+# 2. Virtual environment + dependencies
 python3 -m venv streamlit_env
-source streamlit_env/bin/activate
-```
+source streamlit_env/bin/activate        # Windows: streamlit_env\Scripts\activate
+pip install -r requirements.txt
 
-### 2. Install Dependencies
-Ensure you have the required packages. (If no `requirements.txt` is present, install the core libraries):
-```bash
-pip install streamlit langgraph langchain chromadb sentence-transformers groq python-dotenv
-```
+# 3. API keys
+cp .env.example .env                     # then edit .env and paste your key(s)
 
-### 3. Environment Variables
-Create a `.env` file inside the `adaptive_health_agent` directory and add your Groq API keys. (The system supports splitting API limits across three keys, but you can use the same key for all three if desired).
-```env
-GROQ_API_KEY_PROFILER=gsk_your_key_here
-GROQ_API_KEY_ANALYST=gsk_your_key_here
-GROQ_API_KEY_COMMUNICATOR=gsk_your_key_here
-```
-
-### 4. Run the Application
-```bash
-cd adaptive_health_agent
+# 4. Run
 streamlit run app.py
 ```
 
-## 🎮 How to Use the App
+The app opens at <http://localhost:8501>. The knowledge base and vector store are built automatically on first launch.
 
-1. **Select a Scenario:** Upon launching, choose between **Alex** (stress accumulation scenario) or **Eleanor** (medical emergency scenario).
-2. **Initialize:** Click **Initialize / Reset** to populate the Living Profile and ChromaDB state.
-3. **Stream Vitals:** Click **▶ Start** in the sidebar to begin processing the live telemetry mock feed (1 packet every 2 seconds).
-4. **Chat:** Ask the agent questions, or simply wait for it to proactively reach out when it detects a confirmed anomaly. Try being dismissive ("ok", "whatever") or asking for data ("what is my HRV?") to see the agent adapt its tone!
+## ☁️ Deploy to Streamlit Cloud
 
-## 📂 Project Structure
+The app is deployed from this repo at **[ava-healthagent.streamlit.app](https://ava-healthagent.streamlit.app/)**. To deploy your own copy:
+
+1. Fork the repo and create a new app on [share.streamlit.io](https://share.streamlit.io/) with **Main file path** `adaptive_health_agent/app.py`.
+2. In **Settings → Secrets**, add your keys:
+   ```toml
+   GROQ_API_KEY_PROFILER = "gsk_..."
+   GROQ_API_KEY_ANALYST = "gsk_..."
+   GROQ_API_KEY_COMMUNICATOR = "gsk_..."
+   ```
+
+Embeddings use ChromaDB's built-in ONNX MiniLM model rather than PyTorch, which keeps the install small enough for the free tier.
+
+## ⚙️ Configuration
+
+Copy `.env.example` to `.env`. Only the Groq keys are required; the rest are optional tuning. The three Groq keys can be the same key, or separate keys to spread rate limits across agents.
+
+| Variable | Purpose |
+|---|---|
+| `GROQ_API_KEY_PROFILER` / `_ANALYST` / `_COMMUNICATOR` | Groq key for each agent |
+| `CHROMA_DB_PATH` | Where the vector store lives (default `./chroma_db`) |
+| `MESSAGE_COOLDOWN_MINUTES` | Minimum gap between proactive messages from the Analyst (default `120`) |
+| `SUMMARIZATION_INTERVAL_DAYS` | Window used when compressing episodic memory (default `7`) |
+
+## 📂 Project structure
 
 ```text
 adaptive_health_agent/
 ├── agents/
-│   ├── profiler.py        # Monitors packets & pattern buffer
-│   ├── analyst.py         # Assigns severity & context via RAG
-│   └── communicator.py    # Adapts tone & handles user chat
+│   ├── profiler.py          # Monitors packets & pattern buffer
+│   ├── analyst.py           # Assigns severity & context via RAG
+│   └── communicator.py      # Adapts tone & handles user chat
 ├── graph/
-│   └── graph.py           # LangGraph state machine linking agents
+│   ├── graph.py             # LangGraph state machine linking the agents
+│   └── state.py             # Shared graph state
 ├── memory/
-│   ├── living_profile.py  # User state management (baselines, style)
-│   ├── episodic_memory.py # ChromaDB interactions
-│   └── summarizer.py      # Background task for memory compression
+│   ├── living_profile.py    # User state (baselines, communication style)
+│   ├── episodic_memory.py   # ChromaDB interactions
+│   └── summarizer.py        # Memory compression
+├── knowledge_base/          # Medical knowledge documents + loader
 ├── telemetry/
-│   ├── user_a_scenario.py # Mock data generator (Stress)
-│   └── user_b_scenario.py # Mock data generator (Emergency)
+│   ├── user_a_scenario.py   # Mock data generator (stress)
+│   └── user_b_scenario.py   # Mock data generator (emergency)
 ├── utils/
-│   └── pattern_buffer.py  # Cooldown logic for telemetry
-└── app.py                 # Streamlit UI
+│   ├── baseline_calculator.py
+│   └── pattern_buffer.py    # Consecutive-anomaly confirmation
+├── tests/                   # Phase-by-phase tests
+└── app.py                   # Streamlit UI
 ```
